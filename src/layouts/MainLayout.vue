@@ -12,12 +12,20 @@
         />
 
         <q-toolbar-title>
-          Quasar App
+          SMW Gradient Tool
         </q-toolbar-title>
 
         <div></div>
       </q-toolbar>
     </q-header>
+
+    <q-drawer
+      v-model="leftDrawerOpen"
+      bordered
+    >
+    HOWTO: select start and ending colors. Either 1. Download .PNG and import into EffectTool (BG Gradient>Image>Load Image).
+    Or 2. Select "Gradient number" then "Copy BG Code" and insert with UberASM.
+    </q-drawer>
 
     <q-page-container>
       <router-view />
@@ -29,14 +37,6 @@
 import { defineComponent, ref } from 'vue'
 //import EssentialLink from 'components/EssentialLink.vue'
 
-const linksList = [
-  {
-    title: 'Docs',
-    caption: 'quasar.dev',
-    icon: 'school',
-    link: 'https://quasar.dev'
-  },
-]
 
 export default defineComponent({
   name: 'MainLayout',

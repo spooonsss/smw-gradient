@@ -1,3 +1,7 @@
+set Path=%path%;c:\Program Files\nodejs;%userprofile%\AppData\Roaming\npm
+quasar dev
+
+
 # defecttool (defecttool)
 
 defecttool

@@ -4,7 +4,13 @@ const routes = [
     path: '/',
     component: () => import('layouts/MainLayout.vue'),
     children: [
-      { path: '', component: () => import('pages/IndexPage.vue') }
+      { path: 'v1/:pathMatch(.*)*', component: () => import('pages/IndexPage.vue') },
+      {
+        path: '',
+        redirect: to => {
+          return { path: '/v1/3b8ed0/f66360' }
+        },
+      },
     ]
   },
 
