@@ -342,7 +342,9 @@ export default defineComponent({
     updateValues(route.params.pathMatch);
     const router = useRouter();
     watch([topColor, bottomColor], debounce(function () {
-        router.push(`/v1/${topColor.value.substring(1)}/${bottomColor.value.substring(1)}`);
+        // this scrolls the page:
+        //router.push(`/v1/${topColor.value.substring(1)}/${bottomColor.value.substring(1)}`);
+        history.pushState(null, null, `#/v1/${topColor.value.substring(1)}/${bottomColor.value.substring(1)}`);
       }),
     )
 
