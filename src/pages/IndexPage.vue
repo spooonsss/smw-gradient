@@ -1,12 +1,24 @@
 <template>
   <q-page class="flex flex-center" style="padding-top: 1em;">
+
+    <div class="column">
+    <canvas id="c_numbers"></canvas>
     <canvas id="c"></canvas>
+    </div>
 
     <q-color v-model="topColor" />
     <q-color v-model="bottomColor" />
     
     
     <div class="column">
+    <q-badge color="secondary">
+     Start : {{ start }}
+    </q-badge>
+    <q-slider v-model="start" :min="0" :max="224" :inner-max="end"/>
+    <q-badge color="secondary">
+     End : {{ end }}
+    </q-badge>
+    <q-slider v-model="end" :inner-min="start" :min="0" :max="224"/>
 
     <q-btn color="white" text-color="black" label="Download .png" @click="downloadGradient" />
     <br/>
@@ -26,14 +38,18 @@ import { Notify, useQuasar } from 'quasar'
 import { useRoute, useRouter } from 'vue-router'
 
 import download from 'downloadjs';
+// import { number } from 'yargs';
 
 const bottomColor = ref('#f66363')
 const topColor = ref('#3b8edb')
+const start = ref(0)
+const end = ref(224)
 
 var gradients;
 var canvas;
 var ctx;
 var scanlines = 224;
+const countGradients = 5;
 
 var mounted = function() {
   canvas = document.getElementById("c");
@@ -41,6 +57,18 @@ var mounted = function() {
   canvas.width = 200;
   canvas.height = scanlines * 2;
   draw();
+
+  const numbers = document.getElementById('c_numbers');
+  numbers.width = 200;
+  numbers.height = 20;
+  const numberContext = numbers.getContext("2d");
+  // numberContext.fillStyle = 'rgb(100, 100, 100)';
+  ctx.font = "48px serif";
+  const textMetrics = ctx.measureText("12345");
+  numbers.height = textMetrics.fontBoundingBoxAscent + 5;
+  for (var i = 0; i < countGradients; i++) {
+    numberContext.fillText(i + 1, 10 + numbers.width * i / countGradients, textMetrics.fontBoundingBoxAscent);
+  }
 };
 
 function parseColor(input) {
@@ -103,7 +131,8 @@ const t = parseColor(topColor.value);
 const b = parseColor(bottomColor.value);
 
 function mix(t, b, index) {
-return t[index] * ((scanlines-i)/scanlines) + b[index] * (i/scanlines);
+  const scanlines2 = scanlines - start.value - (scanlines - end.value)
+return t[index] * ((scanlines2-i)/scanlines2) + b[index] * (i/scanlines2);
 }
 function mix3(t, b) {
   return [0, 1, 2].map((v, index) => mix(t, b, index));
@@ -134,9 +163,13 @@ const bright2 = color2_lin.reduce((a,b)=>a+b)**gamma;
 
 var i;
 
-gradients = [[], [], [], [], []];
+gradients = Array(countGradients).fill(1).map(() => []);
 
-for (i = 0; i < scanlines; i++) {
+for (i = 0; i < start.value; i++) {
+  gradients.forEach(g => g.push(t));
+}
+
+for (i = 0; i < scanlines - start.value - (scanlines - end.value); i++) {
   gradients[0].push([mixrgb(0), mixrgb(1), mixrgb(2)]);
 
 // Mark method
@@ -172,6 +205,11 @@ for (i = 0; i < scanlines; i++) {
   gradients[4].push(LABtoRGB(mix3(topLAB, bottomLAB, i)));
 }
 
+for (i = 0; i < scanlines - end.value; i++) {
+  gradients.forEach(g => g.push(b));
+}
+
+
 // round to nearest 5bit color
 // [(i, (i>>3)*8, (i >> 3) *8 + (i>>5)) for i in range(238, 255)]
 gradients = gradients.map(gradient => {
@@ -199,7 +237,7 @@ for (i = 0; i < canvas.height; i++) {
   );
 }
 };
-watch([topColor, bottomColor], draw);
+watch([topColor, bottomColor, start, end], draw);
 
 function downloadGradient() {
   download(canvas.toDataURL('image/png'), 'gradient.png');
@@ -328,23 +366,30 @@ export default defineComponent({
   name: 'IndexPage',
   mounted,
   setup: function () {
+    const inHash = [topColor, bottomColor, start, end];
+
     function updateValues(new_) {
-      topColor.value = '#' + new_[0];
-      bottomColor.value = '#' + new_[1];
+      for (var i = 0; i < inHash.length; i++) {
+        inHash[i].value = decodeURIComponent(new_[i]);
+      }
     }
 
     const route = useRoute();
-    watch(()=> route.params.pathMatch,
+    watch(() => route.params.pathMatch,
       (new_, old) => {
         updateValues(new_);
       }
     )
     updateValues(route.params.pathMatch);
     const router = useRouter();
-    watch([topColor, bottomColor], debounce(function () {
+    watch(inHash, debounce(function () {
         // this scrolls the page:
         //router.push(`/v1/${topColor.value.substring(1)}/${bottomColor.value.substring(1)}`);
-        history.pushState(null, null, `#/v1/${topColor.value.substring(1)}/${bottomColor.value.substring(1)}`);
+        var hash = '/v1';
+        for (var i = 0; i < inHash.length; i++) {
+          hash += '/' + encodeURIComponent(inHash[i].value);
+        }
+        history.pushState(null, null, '#' + hash);
       }),
     )
 
@@ -352,6 +397,8 @@ export default defineComponent({
       draw,
       topColor,
       bottomColor,
+      start,
+      end,
       downloadGradient,
       copyCode,
       selected
