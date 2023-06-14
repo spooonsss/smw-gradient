@@ -16,8 +16,8 @@
 
       <q-btn @click="removeInternal(i)" :disable="internalData.length <= 2">del</q-btn>
 
-      {{ data.color }} {{ data.position }}
-      {{ data.start }} {{ data.end }}
+      <!-- {{ data.color }} {{ data.position }}
+      {{ data.start }} {{ data.end }} -->
     </div>
 
     <div>
@@ -237,7 +237,7 @@ for (i = 0; i < scanlines - start - (scanlines - end); i++) {
 }
 for (i = 0; i < internalData.value.length - 1; i++) {
   //doGradient(t, b, start, end);
-  doGradient(parseColor(internalData.value[i].color), parseColor(internalData.value[i+1].color), 
+  doGradient(parseColor(internalData.value[i].color), parseColor(internalData.value[i+1].color),
     internalData.value[i].position, internalData.value[i+1].position);
 }
 
@@ -433,12 +433,25 @@ export default defineComponent({
   },
   mounted,
   setup: function () {
-    /*
-    const inHash = [topColor, bottomColor, start, end, selectedGradientType];
+
+    const inHash = [internalData, selectedGradientType];
 
     function updateValues(new_) {
       for (var i = 0; i < inHash.length; i++) {
-        inHash[i].value = decodeURIComponent(new_[i]);
+        if (i == 0) {
+          const encodedInternalData = new_[i];
+          internalData.value = encodedInternalData.split('_').map(entry => {
+            const [color, position] = entry.split('-')
+            return {
+              color, position,
+              start: 0,
+              end: scanlines
+            }
+          }
+          )
+        } else {
+          inHash[i].value = decodeURIComponent(new_[i]);
+        }
       }
     }
 
@@ -450,18 +463,23 @@ export default defineComponent({
     )
     updateValues(route.params.pathMatch);
     const router = useRouter();
+
     watch(inHash, debounce(function () {
         // this scrolls the page:
         //router.push(`/v1/${topColor.value.substring(1)}/${bottomColor.value.substring(1)}`);
         // FIXME: back button is weird with this
         var hash = '/v1';
         for (var i = 0; i < inHash.length; i++) {
-          hash += '/' + encodeURIComponent(inHash[i].value);
+          var d = inHash[i].value;
+          if (i == 0) {
+            d = internalData.value.map(d => `${d.color}-${d.position}`).join('_')
+          }
+          hash += '/' + encodeURIComponent(d);
         }
         history.pushState(null, null, '#' + hash);
-      }),
+      }), {deep: true}
     )
-*/
+
     return {
       draw,
       downloadGradient,
