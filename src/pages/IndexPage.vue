@@ -286,12 +286,12 @@ const singleIndex = {
 
 const single = convertToCountAndColors(gradient.map(e => [e[singleIndex]]));
 
-function genTable(single, mask) {
+function genTable(countAndColors, mask) {
   var table = '';
-  single.forEach((e, index) => {
+  countAndColors.forEach((e, index) => {
     var count = e[0];
     do {
-      if (index == single.length - 1) {
+      if (index == countAndColors.length - 1) {
         table += 'db 1';
         count = 0;
       } else {
@@ -320,6 +320,7 @@ const doubleTable = genTable(pairs[minIndex],
 ][minIndex]);
 
   var code = `
+; Background gradient ${topColor.value} to ${bottomColor.value}
 ; generated from ${window.location.href}
 
 !hdma_channel1 = 3
