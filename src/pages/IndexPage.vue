@@ -24,7 +24,10 @@
     <br/>
     
     <div><q-select
-        filled v-model="selected" label="Gradient number" :options="[ '1 RGB (naive)', '2 RGB gamma corrected', '3 HSV', '4 HSV (reverse)', '5 LAB' ]" style="width: 250px" behavior="menu"/>
+        filled v-model="selected" label="Gradient number" 
+        map-options emit-value
+        :options="[ 'RGB (naive)', 'RGB gamma corrected', 'HSV', 'HSV (reverse)', 'LAB' ].map((o, i) => { return {label: (i + 1) + ' ' + o, value: i + ''}})"
+        behavior="menu"/>
       </div>
     <div><q-btn color="white" text-color="black" label="Copy BG Code" @click="copyCode" />
     </div>
@@ -266,7 +269,7 @@ function convertToCountAndColors(gradient) {
 function internalSlice(arr, ind1, ind2) {
   return arr.map(e => [e[ind1], e[ind2]]);
 }
-const gradient = gradients[selected.value.substring(0, 1) - 1];
+const gradient = gradients[selected.value];
 const countAndColorsRG = convertToCountAndColors(internalSlice(gradient, 0, 1));
 const countAndColorsRB = convertToCountAndColors(internalSlice(gradient, 0, 2));
 const countAndColorsGB = convertToCountAndColors(internalSlice(gradient, 1, 2));
@@ -285,10 +288,15 @@ const single = convertToCountAndColors(gradient.map(e => [e[singleIndex]]));
 
 function genTable(single, mask) {
   var table = '';
-  single.forEach(e => {
+  single.forEach((e, index) => {
     var count = e[0];
     do {
-      table += `db ${Math.min(count, 0x7F)}`;
+      if (index == single.length - 1) {
+        table += 'db 1';
+        count = 0;
+      } else {
+        table += `db ${Math.min(count, 0x7F)}`;
+      }
       e.slice(1).forEach((color, ind) => {
         table += ` : db $${((color >> 3)|mask[ind]).toString(16)}`
       })
@@ -355,18 +363,15 @@ db 0
     Notify.create('Could not copy: ' + err)
     console.error('Async: Could not copy text: ', err);
   });
-
-
 }
 
-
-const selected = ref('2 RGB gamma corrected')
+const selected = ref(1)
 
 export default defineComponent({
   name: 'IndexPage',
   mounted,
   setup: function () {
-    const inHash = [topColor, bottomColor, start, end];
+    const inHash = [topColor, bottomColor, start, end, selected];
 
     function updateValues(new_) {
       for (var i = 0; i < inHash.length; i++) {
@@ -385,6 +390,7 @@ export default defineComponent({
     watch(inHash, debounce(function () {
         // this scrolls the page:
         //router.push(`/v1/${topColor.value.substring(1)}/${bottomColor.value.substring(1)}`);
+        // FIXME: back button is weird with this
         var hash = '/v1';
         for (var i = 0; i < inHash.length; i++) {
           hash += '/' + encodeURIComponent(inHash[i].value);

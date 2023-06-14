@@ -8,7 +8,7 @@ const routes = [
       {
         path: '',
         redirect: to => {
-          return { path: '/v1/%233b8ed0/%23f66360/0/224' }
+          return { path: '/v1/%233b8ed0/%23f66360/0/224/1' }
         },
       },
     ]
