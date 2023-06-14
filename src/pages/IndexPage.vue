@@ -6,25 +6,42 @@
     <canvas id="c"></canvas>
     </div>
 
-    <q-color v-model="topColor" />
-    <q-color v-model="bottomColor" />
-    
-    
     <div class="column">
     <q-badge color="secondary">
      Start : {{ start }}
     </q-badge>
     <q-slider v-model="start" :min="0" :max="224" :inner-max="end"/>
+    <q-color v-model="topColor" />
+    </div>
+
+    <q-btn round color="primary" icon="add_circle" @click="addInternal"/>
+
+    <div class="column" v-for="data, i in internalData" :key="data">
+      <q-badge color="secondary">
+        Internal {{ i+1 }} : {{ internalData[i].position }}
+      </q-badge>
+      <InternalColor v-model="internalData[i]" />
+      {{ data.color }} {{ data.position }}
+      {{ data.start }} {{ data.end }}
+    </div>
+
+
+    <div class="column">
     <q-badge color="secondary">
      End : {{ end }}
     </q-badge>
     <q-slider v-model="end" :inner-min="start" :min="0" :max="224"/>
+    <q-color v-model="bottomColor" />
+    </div>
 
+    <div>
     <q-btn color="white" text-color="black" label="Download .png" @click="downloadGradient" />
+    <br/>
     <br/>
     
     <div><q-select
-        filled v-model="selected" label="Gradient number" 
+        style="width: 200px"
+        filled v-model="selectedGradientType" label="Gradient number" 
         map-options emit-value
         :options="[ 'RGB (naive)', 'RGB gamma corrected', 'HSV', 'HSV (reverse)', 'LAB' ].map((o, i) => { return {label: (i + 1) + ' ' + o, value: i + ''}})"
         behavior="menu"/>
@@ -39,6 +56,7 @@
 import { defineComponent, ref, watch } from 'vue'
 import { Notify, useQuasar } from 'quasar'
 import { useRoute, useRouter } from 'vue-router'
+import InternalColor from 'components/InternalColor.vue'
 
 import download from 'downloadjs';
 // import { number } from 'yargs';
@@ -47,6 +65,21 @@ const bottomColor = ref('#f66363')
 const topColor = ref('#3b8edb')
 const start = ref(0)
 const end = ref(224)
+const internalData = ref([{color: 'EFEFEF', start: 1, end: 20, position:10 }])
+const selectedGradientType = ref(1)
+
+watch([internalData], (old, new_) => {
+  const a = internalData.value;
+  for (var i = 0; i < a.length - 1; i++) {
+    a[i].end = a[i+1].value;
+    a[i+1].start = a[i].value;
+  }
+  if (a.length) {
+    a[0].start = start
+    a[a.length-1].end = end
+  }
+
+}, {deep: true})
 
 var gradients;
 var canvas;
@@ -246,6 +279,13 @@ function downloadGradient() {
   download(canvas.toDataURL('image/png'), 'gradient.png');
 }
 
+function addInternal() {
+  internalData.value.push(
+    {color: '#AAAAAA', start: 1, end: 222, position:30 }
+  );
+
+}
+
 function copyCode() {
 
 
@@ -269,7 +309,7 @@ function convertToCountAndColors(gradient) {
 function internalSlice(arr, ind1, ind2) {
   return arr.map(e => [e[ind1], e[ind2]]);
 }
-const gradient = gradients[selected.value];
+const gradient = gradients[selectedGradientType.value];
 const countAndColorsRG = convertToCountAndColors(internalSlice(gradient, 0, 1));
 const countAndColorsRB = convertToCountAndColors(internalSlice(gradient, 0, 2));
 const countAndColorsGB = convertToCountAndColors(internalSlice(gradient, 1, 2));
@@ -366,13 +406,14 @@ db 0
   });
 }
 
-const selected = ref(1)
-
 export default defineComponent({
   name: 'IndexPage',
+  components: {
+    InternalColor
+  },
   mounted,
   setup: function () {
-    const inHash = [topColor, bottomColor, start, end, selected];
+    const inHash = [topColor, bottomColor, start, end, selectedGradientType];
 
     function updateValues(new_) {
       for (var i = 0; i < inHash.length; i++) {
@@ -408,7 +449,9 @@ export default defineComponent({
       end,
       downloadGradient,
       copyCode,
-      selected
+      selectedGradientType,
+      internalData,
+      addInternal,
     }
   }
 })
