@@ -3,35 +3,21 @@
 
     <div class="column">
     <canvas id="c_numbers"></canvas>
-    <canvas id="c"></canvas>
+    <canvas id="c" @click="addInternal($event.offsetY / $event.target.height, $event.offsetX / $event.target.width)"></canvas>
     </div>
 
-    <div class="column">
-    <q-badge color="secondary">
-     Start : {{ start }}
-    </q-badge>
-    <q-slider v-model="start" :min="0" :max="224" :inner-max="end"/>
-    <q-color v-model="topColor" />
-    </div>
-
-    <q-btn round color="primary" icon="add_circle" @click="addInternal"/>
+    <q-btn round color="primary" icon="add_circle" @click="$event => addInternal(undefined)"/>
 
     <div class="column" v-for="data, i in internalData" :key="data">
       <q-badge color="secondary">
-        Internal {{ i+1 }} : {{ internalData[i].position }}
+        {{ i == 0 ? 'Start' : (i == internalData.length - 1 ? 'End' : 'Internal ' + i) }} : {{ internalData[i].position }}
       </q-badge>
       <InternalColor v-model="internalData[i]" />
+
+      <q-btn @click="removeInternal(i)" :disable="internalData.length <= 2">del</q-btn>
+
       {{ data.color }} {{ data.position }}
       {{ data.start }} {{ data.end }}
-    </div>
-
-
-    <div class="column">
-    <q-badge color="secondary">
-     End : {{ end }}
-    </q-badge>
-    <q-slider v-model="end" :inner-min="start" :min="0" :max="224"/>
-    <q-color v-model="bottomColor" />
     </div>
 
     <div>
@@ -41,7 +27,7 @@
     
     <div><q-select
         style="width: 200px"
-        filled v-model="selectedGradientType" label="Gradient number" 
+        filled v-model="selectedGradientType" label="Gradient number"
         map-options emit-value
         :options="[ 'RGB (naive)', 'RGB gamma corrected', 'HSV', 'HSV (reverse)', 'LAB' ].map((o, i) => { return {label: (i + 1) + ' ' + o, value: i + ''}})"
         behavior="menu"/>
@@ -61,25 +47,29 @@ import InternalColor from 'components/InternalColor.vue'
 import download from 'downloadjs';
 // import { number } from 'yargs';
 
-const bottomColor = ref('#f66363')
-const topColor = ref('#3b8edb')
-const start = ref(0)
-const end = ref(224)
-const internalData = ref([{color: 'EFEFEF', start: 1, end: 20, position:10 }])
+const internalData = ref([
+{color: 'f66363', start: 0, end: 224, position:0 },
+{color: '3b8edb', start: 0, end: 224, position:224 },
+])
 const selectedGradientType = ref(1)
 
 watch([internalData], (old, new_) => {
   const a = internalData.value;
-  for (var i = 0; i < a.length - 1; i++) {
-    a[i].end = a[i+1].value;
-    a[i+1].start = a[i].value;
-  }
+  var maxPosition = 0;
   if (a.length) {
-    a[0].start = start
-    a[a.length-1].end = end
+    a[0].position = maxPosition = Math.max(maxPosition, a[0].position);
+    a[0].start = 0
+    a[a.length-1].end = 224
+  }
+  for (var i = 0; i < a.length - 1; i++) {
+    a[i+1].position = maxPosition = Math.max(maxPosition, a[i+1].position);
+    a[i].end = a[i+1].position;
+    a[i+1].start = a[i].position;
   }
 
 }, {deep: true})
+watch([internalData], draw, {deep: true});
+
 
 var gradients;
 var canvas;
@@ -108,7 +98,7 @@ var mounted = function() {
 };
 
 function parseColor(input) {
-  var m = input.match(/^#([0-9a-f]{6})$/i)[1];
+  var m = input.match(/^([0-9a-f]{6})$/i)[1];
     if (m) {
         return [
             parseInt(m.substr(0,2),16),
@@ -159,15 +149,26 @@ function lerp(color1, color2, frac) {
 
 
 function draw() {
-  if (!ctx || !topColor.value || !bottomColor.value)
+  if (!ctx || internalData.value.length < 2)
     return;
-ctx.clearRect(0, 0, canvas.width, canvas.height);
 //ctx.fillStyle = `rgba(${topColor.value}, 1)`
-const t = parseColor(topColor.value);
-const b = parseColor(bottomColor.value);
+const t = parseColor(internalData.value[0].color);
+const b = parseColor(internalData.value[internalData.value.length-1].color);
 
+const start = internalData.value[0].position;
+const end = internalData.value[internalData.value.length-1].position;
+gradients = Array(countGradients).fill(1).map(() => []);
+
+var i;
+for (i = 0; i < start; i++) {
+  gradients.forEach(g => g.push(t));
+}
+
+
+function doGradient(t, b, start, end) {
+  var i;
 function mix(t, b, index) {
-  const scanlines2 = scanlines - start.value - (scanlines - end.value)
+  const scanlines2 = scanlines - start - (scanlines - end)
 return t[index] * ((scanlines2-i)/scanlines2) + b[index] * (i/scanlines2);
 }
 function mix3(t, b) {
@@ -197,15 +198,8 @@ const bright1 = color1_lin.reduce((a,b)=>a+b)**gamma;
 const color2_lin = b.map(from_sRGB);
 const bright2 = color2_lin.reduce((a,b)=>a+b)**gamma;
 
-var i;
 
-gradients = Array(countGradients).fill(1).map(() => []);
-
-for (i = 0; i < start.value; i++) {
-  gradients.forEach(g => g.push(t));
-}
-
-for (i = 0; i < scanlines - start.value - (scanlines - end.value); i++) {
+for (i = 0; i < scanlines - start - (scanlines - end); i++) {
   gradients[0].push([mixrgb(0), mixrgb(1), mixrgb(2)]);
 
 // Mark method
@@ -240,8 +234,14 @@ for (i = 0; i < scanlines - start.value - (scanlines - end.value); i++) {
 
   gradients[4].push(LABtoRGB(mix3(topLAB, bottomLAB, i)));
 }
+}
+for (i = 0; i < internalData.value.length - 1; i++) {
+  //doGradient(t, b, start, end);
+  doGradient(parseColor(internalData.value[i].color), parseColor(internalData.value[i+1].color), 
+    internalData.value[i].position, internalData.value[i+1].position);
+}
 
-for (i = 0; i < scanlines - end.value; i++) {
+for (i = 0; i < scanlines - end; i++) {
   gradients.forEach(g => g.push(b));
 }
 
@@ -258,6 +258,7 @@ gradients = gradients.map(gradient => {
 
 var ncols = gradients.length;
 var currentCol = 0;
+ctx.clearRect(0, 0, canvas.width, canvas.height);
 function fillColumn(currentCol) {
   // ctx.fillRect(canvas.width * (currentCol/ncols), i, canvas.width * ((currentCol+1)/ncols), i+1);
   ctx.fillRect(canvas.width * (currentCol/ncols), i, canvas.width * (1/ncols), 1);
@@ -273,15 +274,34 @@ for (i = 0; i < canvas.height; i++) {
   );
 }
 };
-watch([topColor, bottomColor, start, end], draw);
 
 function downloadGradient() {
   download(canvas.toDataURL('image/png'), 'gradient.png');
 }
 
-function addInternal() {
-  internalData.value.push(
-    {color: '#AAAAAA', start: 1, end: 222, position:30 }
+function removeInternal(i) {
+  internalData.value.splice(i, 1);
+}
+
+function addInternal(scanline, gradientIndex) {
+  if (scanline === undefined) {
+    scanline = Math.floor(scanlines / 2);
+    gradientIndex = 1;
+  } else {
+    scanline = Math.floor(scanlines * scanline);
+    gradientIndex = Math.floor(gradients.length * gradientIndex);
+  }
+  var colorTriple = gradients[gradientIndex][scanline];
+  var color = colorTriple.map(v => v.toString(16).padStart(2, '0')).join('')
+  var i;
+  for (i = 0; i < internalData.value.length; i++) {
+    if (internalData.value[i].position > scanline) {
+      break;
+    }
+  }
+  i = Math.max(0, i);
+  internalData.value.splice(i, 0,
+    {color, start: 0, end: scanlines, position: scanline }
   );
 
 }
@@ -360,7 +380,7 @@ const doubleTable = genTable(pairs[minIndex],
 ][minIndex]);
 
   var code = `
-; Background gradient ${topColor.value} to ${bottomColor.value}
+; Background gradient ${internalData.value[0].color} to ${internalData.value[internalData.value.length-1].color}
 ; generated from ${window.location.href}
 
 !hdma_channel1 = 3
@@ -413,6 +433,7 @@ export default defineComponent({
   },
   mounted,
   setup: function () {
+    /*
     const inHash = [topColor, bottomColor, start, end, selectedGradientType];
 
     function updateValues(new_) {
@@ -440,18 +461,15 @@ export default defineComponent({
         history.pushState(null, null, '#' + hash);
       }),
     )
-
+*/
     return {
       draw,
-      topColor,
-      bottomColor,
-      start,
-      end,
       downloadGradient,
       copyCode,
       selectedGradientType,
       internalData,
       addInternal,
+      removeInternal,
     }
   }
 })
