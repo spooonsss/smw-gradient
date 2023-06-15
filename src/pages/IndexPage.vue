@@ -3,7 +3,12 @@
 
     <div class="column">
     <canvas id="c_numbers"></canvas>
-    <canvas id="c" @click="addInternal($event.offsetY / $event.target.height, $event.offsetX / $event.target.width)"></canvas>
+    <canvas id="c" @click="addInternal($event.offsetY / $event.target.height, $event.offsetX / $event.target.width)"
+      @mouseleave="mouseOver(undefined, undefined)"
+      @mouseover="mouseOver($event.offsetY / $event.target.height, $event.offsetX / $event.target.width)"
+      @mousemove="mouseOver($event.offsetY / $event.target.height, $event.offsetX / $event.target.width)"
+    ></canvas>
+    <span style="">&nbsp; {{ tooltip }}</span>
     </div>
 
     <q-btn round color="primary" icon="add_circle" @click="$event => addInternal(undefined)"/>
@@ -29,7 +34,7 @@
         style="width: 200px"
         filled v-model="selectedGradientType" label="Gradient number"
         map-options emit-value
-        :options="[ 'RGB (naive)', 'RGB gamma corrected', 'HSV', 'HSV (reverse)', 'LAB' ].map((o, i) => { return {label: (i + 1) + ' ' + o, value: i + ''}})"
+        :options="[ 'RGB (naive)', 'RGB gamma corrected', 'HSV', 'HSV (reverse)', 'LAB', 'Linear RGB interpolation' ].map((o, i) => { return {label: (i + 1) + ' ' + o, value: i + ''}})"
         behavior="menu"/>
       </div>
     <div><q-btn color="white" text-color="black" label="Copy BG Code" @click="copyCode" />
@@ -43,6 +48,7 @@ import { defineComponent, ref, watch } from 'vue'
 import { Notify, useQuasar } from 'quasar'
 import { useRoute, useRouter } from 'vue-router'
 import InternalColor from 'components/InternalColor.vue'
+import chroma from 'chroma-js'
 
 import download from 'downloadjs';
 // import { number } from 'yargs';
@@ -52,6 +58,7 @@ const internalData = ref([
 {color: '3b8edb', start: 0, end: 224, position:224 },
 ])
 const selectedGradientType = ref(1)
+const tooltip = ref('')
 
 watch([internalData], (old, new_) => {
   const a = internalData.value;
@@ -75,17 +82,17 @@ var gradients;
 var canvas;
 var ctx;
 var scanlines = 224;
-const countGradients = 5;
+const countGradients = 6;
 
 var mounted = function() {
   canvas = document.getElementById("c");
   ctx = canvas.getContext("2d");    
-  canvas.width = 200;
+  canvas.width = 240 - (240 % countGradients);
   canvas.height = scanlines * 2;
   draw();
 
   const numbers = document.getElementById('c_numbers');
-  numbers.width = 200;
+  numbers.width = canvas.width;
   numbers.height = 20;
   const numberContext = numbers.getContext("2d");
   // numberContext.fillStyle = 'rgb(100, 100, 100)';
@@ -130,7 +137,7 @@ function to_sRGB_f(x) {
 }
 
 function to_sRGB(x) {
-    return Math.round(255.9999 * to_sRGB_f(x))
+    return Math.floor(255.9999 * to_sRGB_f(x))
 }
 
 function from_sRGB(x) {
@@ -177,7 +184,8 @@ function mix3(t, b) {
 
 // naive rgb
 function mixrgb(index) {
-  return mix(t, b, index);
+  var ret = mix(t, b, index);
+  return ret;
 }
 
 // HSV
@@ -199,6 +207,8 @@ const color2_lin = b.map(from_sRGB);
 const bright2 = color2_lin.reduce((a,b)=>a+b)**gamma;
 
 
+const lrgb = chroma.scale([t, b]).mode('lrgb').domain([0, scanlines - start - (scanlines - end) - 1]);
+
 for (i = 0; i < scanlines - start - (scanlines - end); i++) {
   gradients[0].push([mixrgb(0), mixrgb(1), mixrgb(2)]);
 
@@ -217,7 +227,6 @@ for (i = 0; i < scanlines - start - (scanlines - end); i++) {
   gradients[1].push([color[0], color[1], color[2]]);
 
 
-
   gradients[2].push(hsv2rgb.apply(null, [0, 1, 2].map(mixhsv)).map(v => v * 255));
 
   var hsvReverse = [0, 1, 2].map(mixhsv);
@@ -229,10 +238,24 @@ for (i = 0; i < scanlines - start - (scanlines - end); i++) {
   hsvReverse[0] = (hsvReverse[0] + 720) % 360;
 
   gradients[3].push(hsv2rgb.apply(null, hsvReverse).map(v => v * 255));
+
+  // make gradients[2] have shortest distance between hues
+  if (Math.abs(topHSV[0] - bottomHSV[0]) > 180) {
+    const [t2, t3] = [gradients[2].pop(), gradients[3].pop()]
+    gradients[2].push(t3);
+    gradients[3].push(t2);
+  }
   //ctx.fillRect(canvas.width*2/4, i, canvas.width*3/4, i+1);
 
 
   gradients[4].push(LABtoRGB(mix3(topLAB, bottomLAB, i)));
+  var ret = gradients[4].slice(-1)[0]
+  if (ret[0] > 255 || ret[1] > 255 || ret[2] > 255) {
+   // console.log(ret)
+  }
+
+  gradients[5].push(lrgb(i).rgb());
+
 }
 }
 for (i = 0; i < internalData.value.length - 1; i++) {
@@ -279,6 +302,20 @@ function downloadGradient() {
   download(canvas.toDataURL('image/png'), 'gradient.png');
 }
 
+function mouseOver(scanline, gradientIndex) {
+  if (scanline !== undefined) {
+    gradientIndex = Math.floor(gradients.length * gradientIndex);
+    gradientIndex = Math.min(gradientIndex, gradients.length - 1);
+    scanline = Math.floor(scanlines * scanline);
+    scanline = Math.min(scanline, gradients[gradientIndex].length - 1);
+    var colorTriple = gradients[gradientIndex][scanline];
+    var color = colorTriple.map(v => v.toString(16).padStart(2, '0')).join('')
+    tooltip.value = `${scanline}: ${color}`
+  } else {
+    tooltip.value = '';
+  }
+}
+
 function removeInternal(i) {
   internalData.value.splice(i, 1);
 }
@@ -288,8 +325,10 @@ function addInternal(scanline, gradientIndex) {
     scanline = Math.floor(scanlines / 2);
     gradientIndex = 1;
   } else {
-    scanline = Math.floor(scanlines * scanline);
     gradientIndex = Math.floor(gradients.length * gradientIndex);
+    gradientIndex = Math.min(gradientIndex, gradients.length - 1);
+    scanline = Math.floor(scanlines * scanline);
+    scanline = Math.min(scanline, gradients[gradientIndex].length - 1);
   }
   var colorTriple = gradients[gradientIndex][scanline];
   var color = colorTriple.map(v => v.toString(16).padStart(2, '0')).join('')
@@ -488,6 +527,8 @@ export default defineComponent({
       internalData,
       addInternal,
       removeInternal,
+      mouseOver,
+      tooltip,
     }
   }
 })
@@ -503,10 +544,12 @@ function debounce(func, timeout = 300){
 
 
 function RGBtoLAB(rgb) {
+  return chroma.rgb(rgb).lab();
   return XYZtoLAB(RGBtoXYZ(rgb));
 }
 
 function LABtoRGB(lab) {
+  return chroma.lab(lab).rgb();
   return XYZtoRGB(LABtoXYZ(lab));
 }
 
@@ -520,9 +563,9 @@ function RGBtoXYZ([R, G, B]) {
         .map(x => x * 100)
 
     // Observer. = 2°, Illuminant = D65
-    const X = var_R * 0.4124 + var_G * 0.3576 + var_B * 0.1805
-    const Y = var_R * 0.2126 + var_G * 0.7152 + var_B * 0.0722
-    const Z = var_R * 0.0193 + var_G * 0.1192 + var_B * 0.9505
+    const X = var_R * 0.4124564 + var_G * 0.3575761 + var_B * 0.1804375
+    const Y = var_R * 0.2126729 + var_G * 0.7151522 + var_B * 0.0721750
+    const Z = var_R * 0.0193339 + var_G * 0.1191920 + var_B * 0.9503041
     return [X, Y, Z]
 }
 
@@ -534,9 +577,9 @@ function XYZtoRGB([X, Y, Z]) {
     let var_Y = Y / 100
     let var_Z = Z / 100
 
-    const var_R = var_X *  3.2406 + var_Y * -1.5372 + var_Z * -0.4986
-    const var_G = var_X * -0.9689 + var_Y *  1.8758 + var_Z *  0.0415
-    const var_B = var_X *  0.0557 + var_Y * -0.2040 + var_Z *  1.0570
+    const var_R = var_X *  3.2404542 + var_Y * -1.5371385 + var_Z * -0.4985314
+    const var_G = var_X * -0.9692660 + var_Y *  1.8760108 + var_Z *  0.0415560
+    const var_B = var_X *  0.0556434 + var_Y * -0.2040259 + var_Z *  1.0572252
 
     return [var_R, var_G, var_B]
         .map(n => n > 0.0031308
