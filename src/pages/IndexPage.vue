@@ -3,12 +3,17 @@
 
     <div class="column">
     <canvas id="c_numbers"></canvas>
-    <canvas id="c" @click="addInternal($event.offsetY / $event.target.height, $event.offsetX / $event.target.width)"
+    <canvas id="c" @click="handleClick($event.offsetY / $event.target.height, $event.offsetX / $event.target.width)"
       @mouseleave="mouseOver(undefined, undefined)"
       @mouseover="mouseOver($event.offsetY / $event.target.height, $event.offsetX / $event.target.width)"
       @mousemove="mouseOver($event.offsetY / $event.target.height, $event.offsetX / $event.target.width)"
     ></canvas>
     <span style="">&nbsp; {{ tooltip }}</span>
+    <q-select
+        filled v-model="clickMode" label="Click mode"
+        map-options emit-value
+        :options="[ 'Add', 'Skip color' ]"
+        behavior="menu"/>
     </div>
 
     <q-btn round color="primary" icon="add_circle" @click="$event => addInternal(undefined)"/>
@@ -34,7 +39,7 @@
         style="width: 200px"
         filled v-model="selectedGradientType" label="Gradient number"
         map-options emit-value
-        :options="[ 'RGB (naive)', 'RGB gamma corrected', 'HSV', 'HSV (reverse)', 'LAB', 'Linear RGB interpolation' ].map((o, i) => { return {label: (i + 1) + ' ' + o, value: i + ''}})"
+        :options="[ 'RGB (naive)', 'RGB gamma corrected', 'LAB', 'Linear RGB interpolation', 'HSV', 'HSV (reverse)' ].map((o, i) => { return {label: (i + 1) + ' ' + o, value: i + ''}})"
         behavior="menu"/>
       </div>
     <div><q-btn color="white" text-color="black" label="Copy BG Code" @click="copyCode" />
@@ -59,6 +64,7 @@ const internalData = ref([
 ])
 const selectedGradientType = ref(1)
 const tooltip = ref('')
+const clickMode = ref('')
 
 watch([internalData], (old, new_) => {
   const a = internalData.value;
@@ -88,7 +94,7 @@ var mounted = function() {
   canvas = document.getElementById("c");
   ctx = canvas.getContext("2d");    
   canvas.width = 240 - (240 % countGradients);
-  canvas.height = scanlines * 2;
+  canvas.height = scanlines * 4;
   draw();
 
   const numbers = document.getElementById('c_numbers');
@@ -209,8 +215,12 @@ const bright2 = color2_lin.reduce((a,b)=>a+b)**gamma;
 
 const lrgb = chroma.scale([t, b]).mode('lrgb').domain([0, scanlines - start - (scanlines - end) - 1]);
 
+// const [gradient_rgb, gradient_rgb_y, gradient_hsv, gradient_hsv_r, gradient_lab, gradient_rgb_lin] = gradients;
+
+const [gradient_rgb, gradient_rgb_y, gradient_lab, gradient_rgb_lin, gradient_hsv, gradient_hsv_r] = gradients;
+
 for (i = 0; i < scanlines - start - (scanlines - end); i++) {
-  gradients[0].push([mixrgb(0), mixrgb(1), mixrgb(2)]);
+  gradient_rgb.push([mixrgb(0), mixrgb(1), mixrgb(2)]);
 
 // Mark method
     // intensity = lerp(bright1, bright2, step, steps) ** (1/gamma)
@@ -224,10 +234,10 @@ for (i = 0; i < scanlines - start - (scanlines - end); i++) {
     color = color.map(c => c * intensity / sum);
   }
   color = color.map(to_sRGB);
-  gradients[1].push([color[0], color[1], color[2]]);
+  gradient_rgb_y.push([color[0], color[1], color[2]]);
 
 
-  gradients[2].push(hsv2rgb.apply(null, [0, 1, 2].map(mixhsv)).map(v => v * 255));
+  gradient_hsv.push(hsv2rgb.apply(null, [0, 1, 2].map(mixhsv)).map(v => v * 255));
 
   var hsvReverse = [0, 1, 2].map(mixhsv);
   if (topHSV[0] > bottomHSV[0]) {
@@ -237,24 +247,24 @@ for (i = 0; i < scanlines - start - (scanlines - end); i++) {
   }
   hsvReverse[0] = (hsvReverse[0] + 720) % 360;
 
-  gradients[3].push(hsv2rgb.apply(null, hsvReverse).map(v => v * 255));
+  gradient_hsv_r.push(hsv2rgb.apply(null, hsvReverse).map(v => v * 255));
 
   // make gradients[2] have shortest distance between hues
   if (Math.abs(topHSV[0] - bottomHSV[0]) > 180) {
-    const [t2, t3] = [gradients[2].pop(), gradients[3].pop()]
-    gradients[2].push(t3);
-    gradients[3].push(t2);
+    const [t2, t3] = [gradient_hsv_r.pop(), gradient_hsv.pop()]
+    gradient_hsv_r.push(t3);
+    gradient_hsv.push(t2);
   }
   //ctx.fillRect(canvas.width*2/4, i, canvas.width*3/4, i+1);
 
 
-  gradients[4].push(LABtoRGB(mix3(topLAB, bottomLAB, i)));
-  var ret = gradients[4].slice(-1)[0]
+  gradient_lab.push(LABtoRGB(mix3(topLAB, bottomLAB, i)));
+  var ret = gradient_lab.slice(-1)[0]
   if (ret[0] > 255 || ret[1] > 255 || ret[2] > 255) {
    // console.log(ret)
   }
 
-  gradients[5].push(lrgb(i).rgb());
+  gradient_rgb_lin.push(lrgb(i).rgb());
 
 }
 }
@@ -318,6 +328,45 @@ function mouseOver(scanline, gradientIndex) {
 
 function removeInternal(i) {
   internalData.value.splice(i, 1);
+}
+
+function handleClick(scanline, gradientIndex) {
+  var mode = clickMode.value || 'Add';
+  if (mode === 'Add') {
+    addInternal(scanline, gradientIndex);
+  } else {
+    gradientIndex = Math.floor(gradients.length * gradientIndex);
+    gradientIndex = Math.min(gradientIndex, gradients.length - 1);
+    scanline = Math.floor(scanlines * scanline);
+    scanline = Math.min(scanline, gradients[gradientIndex].length - 1);
+    function format(ar) {
+      return ar.map(v => v.toString(16).padStart(2, '0')).join('')
+    }
+    const gradient = gradients[gradientIndex];
+    var colorTriple = gradient[scanline];
+    var color = format(colorTriple);
+    // last index of previous color
+    var startIndex = gradient.findIndex(v => format(v) === color) - 1;
+    // first index of next color
+    var endIndex = scanline + gradient.slice(scanline).findIndex(v => format(v) !== color);
+    if (startIndex === -1 || endIndex - scanline === -1) {
+      return;
+    }
+    const targetScanline = Math.floor(startIndex + (endIndex - startIndex) / 2);
+    var i;
+    for (i = 0; i < internalData.value.length; i++) {
+      if (internalData.value[i].position > targetScanline) {
+        break;
+      }
+    }
+    i = Math.max(0, i);
+    internalData.value.splice(i, 0,
+      {color: format(gradient[endIndex]), start: 0, end: scanlines, position: targetScanline + 1 }
+    );
+    internalData.value.splice(i, 0,
+      {color: format(gradient[startIndex]), start: 0, end: scanlines, position: targetScanline  }
+    );
+  }
 }
 
 function addInternal(scanline, gradientIndex) {
@@ -529,6 +578,8 @@ export default defineComponent({
       removeInternal,
       mouseOver,
       tooltip,
+      clickMode,
+      handleClick,
     }
   }
 })
