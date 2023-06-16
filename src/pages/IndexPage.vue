@@ -7,6 +7,7 @@
       @mouseleave="mouseOver(undefined, undefined)"
       @mouseover="mouseOver($event.offsetY / $event.target.height, $event.offsetX / $event.target.width)"
       @mousemove="mouseOver($event.offsetY / $event.target.height, $event.offsetX / $event.target.width)"
+      @wheel="canvasWheel($event)"
     ></canvas>
     <span style="">&nbsp; {{ tooltip }}</span>
     <q-select
@@ -34,7 +35,7 @@
     <q-btn color="white" text-color="black" label="Download .png" @click="downloadGradient" />
     <br/>
     <br/>
-    
+
     <div><q-select
         style="width: 200px"
         filled v-model="selectedGradientType" label="Gradient number"
@@ -43,6 +44,7 @@
         behavior="menu"/>
       </div>
     <div><q-btn color="white" text-color="black" label="Copy BG Code" @click="copyCode" />
+      <q-btn color="white" text-color="black" label="Copy Color Code" @click="copyColorCode" />
     </div>
   </div>
 </q-page>
@@ -64,7 +66,7 @@ const internalData = ref([
 ])
 const selectedGradientType = ref(1)
 const tooltip = ref('')
-const clickMode = ref('')
+const clickMode = ref('Add')
 
 watch([internalData], (old, new_) => {
   const a = internalData.value;
@@ -85,16 +87,23 @@ watch([internalData], draw, {deep: true});
 
 
 var gradients;
+var roundedGradients;
 var canvas;
+var canvasZoom = ref(2);
 var ctx;
 var scanlines = 224;
 const countGradients = 6;
 
+watch([canvasZoom], function () {
+  canvas.height = scanlines * canvasZoom.value;
+  draw();
+});
+
 var mounted = function() {
   canvas = document.getElementById("c");
-  ctx = canvas.getContext("2d");    
+  ctx = canvas.getContext("2d");
   canvas.width = 240 - (240 % countGradients);
-  canvas.height = scanlines * 4;
+  canvas.height = scanlines * canvasZoom.value;
   draw();
 
   const numbers = document.getElementById('c_numbers');
@@ -122,16 +131,16 @@ function parseColor(input) {
 }
 
 // input: h in [0,360] and s,v in [0,1] - output: r,g,b in [0,1]
-function hsv2rgb(h,s,v) 
-{                              
-  let f= (n,k=(n+h/60)%6) => v - v*s*Math.max( Math.min(k,4-k,1), 0);     
-  return [f(5),f(3),f(1)];       
-}  
+function hsv2rgb(h,s,v)
+{
+  let f= (n,k=(n+h/60)%6) => v - v*s*Math.max( Math.min(k,4-k,1), 0);
+  return [f(5),f(3),f(1)];
+}
 //https://stackoverflow.com/questions/8022885/rgb-to-hsv-color-in-javascript
 // input: r,g,b in [0,1], out: h in [0,360) and s,v in [0,1]
 function rgb2hsv(r,g,b) {
   let v=Math.max(r,g,b), c=v-Math.min(r,g,b);
-  let h= c && ((v==r) ? (g-b)/c : ((v==g) ? 2+(b-r)/c : 4+(r-g)/c)); 
+  let h= c && ((v==r) ? (g-b)/c : ((v==g) ? 2+(b-r)/c : 4+(r-g)/c));
   return [60*(h<0?h+6:h), v&&c/v, v];
 }
 
@@ -182,7 +191,10 @@ function doGradient(t, b, start, end) {
   var i;
 function mix(t, b, index) {
   const scanlines2 = scanlines - start - (scanlines - end)
-return t[index] * ((scanlines2-i)/scanlines2) + b[index] * (i/scanlines2);
+  if (t[index] == b[index]) {
+    return t[index];
+  }
+  return t[index] * ((scanlines2-i)/scanlines2) + b[index] * (i/scanlines2) // + 0.0001;
 }
 function mix3(t, b) {
   return [0, 1, 2].map((v, index) => mix(t, b, index));
@@ -278,10 +290,9 @@ for (i = 0; i < scanlines - end; i++) {
   gradients.forEach(g => g.push(b));
 }
 
-
 // round to nearest 5bit color
 // [(i, (i>>3)*8, (i >> 3) *8 + (i>>5)) for i in range(238, 255)]
-gradients = gradients.map(gradient => {
+roundedGradients = gradients.map(gradient => {
   return gradient.map(entry => {
     return entry.map(color => {
       return (color >> 3) * 8 + (color >> 5);
@@ -298,9 +309,9 @@ function fillColumn(currentCol) {
   currentCol = (currentCol + 1) % ncols;
 }
 for (i = 0; i < canvas.height; i++) {
-  gradients.forEach((g, j) => {
+  roundedGradients.forEach((g, j) => {
     ctx.fillStyle = 'rgb(' + g[Math.floor(i/ (canvas.height/scanlines))] + ')';
-    
+
     //ctx.fillRect(canvas.width/4, i, canvas.width*2/4, i+1);
     fillColumn(j);
   }
@@ -319,8 +330,9 @@ function mouseOver(scanline, gradientIndex) {
     scanline = Math.floor(scanlines * scanline);
     scanline = Math.min(scanline, gradients[gradientIndex].length - 1);
     var colorTriple = gradients[gradientIndex][scanline];
-    var color = colorTriple.map(v => v.toString(16).padStart(2, '0')).join('')
-    tooltip.value = `${scanline}: ${color}`
+    var color = formatTriple(colorTriple);
+    var snesColor = formatTriple(colorTriple.map(color => (color >> 3) * 8 + (color >> 5)));
+    tooltip.value = `${scanline}: ${color}  (SNES: ${snesColor}) `
   } else {
     tooltip.value = '';
   }
@@ -328,6 +340,19 @@ function mouseOver(scanline, gradientIndex) {
 
 function removeInternal(i) {
   internalData.value.splice(i, 1);
+}
+
+function formatTriple(ar) {
+  return ar.map(v => (v>>0).toString(16).padStart(2, '0')).join('')
+}
+
+function canvasWheel(event) {
+  if (event.deltaY) {
+    canvasZoom.value = canvasZoom.value + (event.deltaY > 0 ? 1 : -1);
+    canvasZoom.value = Math.max(1, canvasZoom.value);
+    event.preventDefault();
+    event.stopPropagation();
+  }
 }
 
 function handleClick(scanline, gradientIndex) {
@@ -339,21 +364,29 @@ function handleClick(scanline, gradientIndex) {
     gradientIndex = Math.min(gradientIndex, gradients.length - 1);
     scanline = Math.floor(scanlines * scanline);
     scanline = Math.min(scanline, gradients[gradientIndex].length - 1);
-    function format(ar) {
-      return ar.map(v => v.toString(16).padStart(2, '0')).join('')
-    }
     const gradient = gradients[gradientIndex];
-    var colorTriple = gradient[scanline];
-    var color = format(colorTriple);
+    const roundedGradient = roundedGradients[gradientIndex];
+    var roundedColor = formatTriple(roundedGradient[scanline]);
     // last index of previous color
-    var startIndex = gradient.findIndex(v => format(v) === color) - 1;
+    var startIndex = roundedGradient.findIndex(v => formatTriple(v) === roundedColor) - 1;
     // first index of next color
-    var endIndex = scanline + gradient.slice(scanline).findIndex(v => format(v) !== color);
+    var endIndex = scanline + roundedGradient.slice(scanline).findIndex(v => formatTriple(v) !== roundedColor);
     if (startIndex === -1 || endIndex - scanline === -1) {
       return;
     }
     const targetScanline = Math.floor(startIndex + (endIndex - startIndex) / 2);
+
+    // delete internalData entries with .position in [startIndex, endIndex]
     var i;
+    while (true) {
+      i = internalData.value.findIndex(d => d.position >= startIndex && d.position <= endIndex);
+      if (i === -1) {
+        break;
+      }
+      internalData.value.splice(i, 1);
+    }
+
+    // find where to insert new internalData entries
     for (i = 0; i < internalData.value.length; i++) {
       if (internalData.value[i].position > targetScanline) {
         break;
@@ -361,11 +394,12 @@ function handleClick(scanline, gradientIndex) {
     }
     i = Math.max(0, i);
     internalData.value.splice(i, 0,
-      {color: format(gradient[endIndex]), start: 0, end: scanlines, position: targetScanline + 1 }
+      {color: formatTriple(gradient[startIndex]), start: 0, end: scanlines, position: startIndex },
+      {color: formatTriple(gradient[startIndex]), start: 0, end: scanlines, position: targetScanline },
+      {color: formatTriple(gradient[endIndex]), start: 0, end: scanlines, position: targetScanline + 1 },
+      {color: formatTriple(gradient[endIndex]), start: 0, end: scanlines, position: endIndex }
     );
-    internalData.value.splice(i, 0,
-      {color: format(gradient[startIndex]), start: 0, end: scanlines, position: targetScanline  }
-    );
+    // FIXME delete 3 consecutive entries with same color
   }
 }
 
@@ -380,7 +414,7 @@ function addInternal(scanline, gradientIndex) {
     scanline = Math.min(scanline, gradients[gradientIndex].length - 1);
   }
   var colorTriple = gradients[gradientIndex][scanline];
-  var color = colorTriple.map(v => v.toString(16).padStart(2, '0')).join('')
+  var color = formatTriple(colorTriple);
   var i;
   for (i = 0; i < internalData.value.length; i++) {
     if (internalData.value[i].position > scanline) {
@@ -393,9 +427,6 @@ function addInternal(scanline, gradientIndex) {
   );
 
 }
-
-function copyCode() {
-
 
 
 function convertToCountAndColors(gradient) {
@@ -414,10 +445,76 @@ function convertToCountAndColors(gradient) {
   }
   return ret;
 }
+
+function copyColorCode() {
+  function genColorTable(countAndColors) {
+  var table = '';
+  countAndColors.forEach((e, index) => {
+    var count = e[0];
+    do {
+      if (index == countAndColors.length - 1) {
+        table += 'db 1';
+        count = 0;
+      } else {
+        table += `db ${Math.min(count, 0x7F)}`;
+      }
+      table += ' : db 0, !destination_color'
+      const shifts = [0, 5, 10];
+      const snesColor = e.slice(1).map((color, ind) => {
+        return (color >> 3) << shifts[ind];
+      }).reduce((x, y) => x + y);
+      table += ` : dw $${snesColor.toString(16)}`;
+      table += '\n'
+      count -= 0x7F;
+    } while (count > 0)
+  });
+  return table;
+}
+
+const gradient = roundedGradients[selectedGradientType.value];
+const countAndColors = convertToCountAndColors(gradient);
+const table = genColorTable(countAndColors);
+  var code = `
+; Color gradient ${internalData.value[0].color} to ${internalData.value[internalData.value.length-1].color}
+; generated from ${window.location.href}
+
+!hdma_channel1 = 3
+!destination_color = $56
+
+!hdma_base1 #= $4300|(!hdma_channel1<<4)
+
+init:
+REP #$20
+LDA #$2103  ; CGADD 2121
+STA.w !hdma_base1
+LDA.w #.ColorTable
+STA.w !hdma_base1+2
+LDY.b #.ColorTable>>16
+STY.w !hdma_base1+4
+
+SEP #$20
+LDA.b #(1<<!hdma_channel1)
+TSB $0D9F|!addr
+RTL
+
+.ColorTable:
+${table}
+db 0
+`
+
+  navigator.clipboard.writeText(code).then(function() {
+    Notify.create('Copied!')
+  }, function(err) {
+    Notify.create('Could not copy: ' + err)
+    console.error('Async: Could not copy text: ', err);
+  });
+}
+
+function copyCode() {
 function internalSlice(arr, ind1, ind2) {
   return arr.map(e => [e[ind1], e[ind2]]);
 }
-const gradient = gradients[selectedGradientType.value];
+const gradient = roundedGradients[selectedGradientType.value];
 const countAndColorsRG = convertToCountAndColors(internalSlice(gradient, 0, 1));
 const countAndColorsRB = convertToCountAndColors(internalSlice(gradient, 0, 2));
 const countAndColorsGB = convertToCountAndColors(internalSlice(gradient, 1, 2));
@@ -434,7 +531,7 @@ const singleIndex = {
 
 const single = convertToCountAndColors(gradient.map(e => [e[singleIndex]]));
 
-function genTable(countAndColors, mask) {
+function genBGTable(countAndColors, mask) {
   var table = '';
   countAndColors.forEach((e, index) => {
     var count = e[0];
@@ -450,17 +547,17 @@ function genTable(countAndColors, mask) {
       })
       table += '\n'
       count -= 0x7F;
-    } while (count > 0) 
+    } while (count > 0)
   });
   return table;
 }
 
 // bgrccccc
-const singleTable = genTable(single,
+const singleTable = genBGTable(single,
 [[0x20, 0x40, 0x80][singleIndex]]
 );
 
-const doubleTable = genTable(pairs[minIndex],
+const doubleTable = genBGTable(pairs[minIndex],
 [
   [0x20, 0x40],
   [0x20, 0x80],
@@ -477,7 +574,7 @@ const doubleTable = genTable(pairs[minIndex],
 !hdma_base1 #= $4300|(!hdma_channel1<<4)
 !hdma_base2 #= $4300|(!hdma_channel2<<4)
 
-init: 
+init:
 REP #$20
 LDA #$3206
 STA.w !hdma_base1
@@ -572,6 +669,7 @@ export default defineComponent({
       draw,
       downloadGradient,
       copyCode,
+      copyColorCode,
       selectedGradientType,
       internalData,
       addInternal,
@@ -580,10 +678,22 @@ export default defineComponent({
       tooltip,
       clickMode,
       handleClick,
+      canvasWheel: throttle(canvasWheel),
     }
   }
 })
 
+function throttle(func, timeout = 300) {
+  let timer;
+  let done = true;
+  return (...args) => {
+    if (done) {
+      func.apply(this, args);
+      done = false;
+      timer = setTimeout(() => { done = true }, timeout);
+    }
+  };
+}
 
 function debounce(func, timeout = 300){
   let timer;
