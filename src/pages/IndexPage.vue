@@ -453,10 +453,10 @@ function copyColorCode() {
     var count = e[0];
     do {
       if (index == countAndColors.length - 1) {
-        table += 'db 1';
+        table += 'db  1';
         count = 0;
       } else {
-        table += `db ${Math.min(count, 0x7F)}`;
+        table += `db ${Math.min(count, 0x7F).toString().padStart(2, ' ')}`;
       }
       table += ' : db 0, !destination_color'
       const shifts = [0, 5, 10];
