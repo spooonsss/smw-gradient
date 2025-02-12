@@ -23,7 +23,7 @@
       <q-badge color="secondary">
         {{ i == 0 ? 'Start' : (i == internalData.length - 1 ? 'End' : 'Internal ' + i) }} : {{ internalData[i].position }}
       </q-badge>
-      <InternalColor v-model="internalData[i]" />
+      <InternalColor v-model="internalData[i]" :max="scanlinesRef"/>
 
       <q-btn @click="removeInternal(i)" :disable="internalData.length <= 2">del</q-btn>
 
@@ -45,6 +45,9 @@
       </div>
     <div><q-btn color="white" text-color="black" label="Copy BG Code" @click="copyCode" />
       <q-btn color="white" text-color="black" label="Copy Color Code" @click="copyColorCode" />
+      <q-btn color="white" text-color="black" label="Copy Scrolling BG Code" @click="copyScrollingBGCode" />
+      <q-btn color="white" text-color="black" label="Copy Scrolling Color Code" @click="copyScrollingColorCode" />
+      <q-btn color="white" text-color="black" label="Copy Scrolling Dual Color Code" @click="copyScrollingDualColorCode" />
     </div>
   </div>
 </q-page>
@@ -61,8 +64,8 @@ import download from 'downloadjs';
 // import { number } from 'yargs';
 
 const internalData = ref([
-{color: 'f66363', start: 0, end: 224, position:0 },
-{color: '3b8edb', start: 0, end: 224, position:224 },
+//{color: 'f66363', start: 0, end: scanlines, position:0 },
+//{color: '3b8edb', start: 0, end: scanlines, position:scanlines },
 ])
 const selectedGradientType = ref(1)
 const tooltip = ref('')
@@ -74,7 +77,7 @@ watch([internalData], (old, new_) => {
   if (a.length) {
     a[0].position = maxPosition = Math.max(maxPosition, a[0].position);
     a[0].start = 0
-    a[a.length-1].end = 224
+    a[a.length-1].end = scanlines
   }
   for (var i = 0; i < a.length - 1; i++) {
     a[i+1].position = maxPosition = Math.max(maxPosition, a[i+1].position);
@@ -92,11 +95,14 @@ var canvas;
 var canvasZoom = ref(2);
 var ctx;
 var scanlines = 224;
+var scanlinesRef = ref(224);
 const countGradients = 6;
 
-watch([canvasZoom], function () {
-  canvas.height = scanlines * canvasZoom.value;
-  draw();
+watch([canvasZoom, scanlinesRef], function () {
+  if (canvas) {
+    canvas.height = scanlinesRef.value * canvasZoom.value;
+    draw();
+  }
 });
 
 var mounted = function() {
@@ -245,6 +251,8 @@ for (i = 0; i < scanlines - start - (scanlines - end); i++) {
   if (sum != 0) {
     color = color.map(c => c * intensity / sum);
   }
+  color = color.map(c => Math.min(1, c));
+  color = color.map(c => Math.max(0, c));
   color = color.map(to_sRGB);
   gradient_rgb_y.push([color[0], color[1], color[2]]);
 
@@ -446,6 +454,13 @@ function convertToCountAndColors(gradient) {
   return ret;
 }
 
+function RGB2PaletteColor(rgb) {
+  const shifts = [0, 5, 10];
+  return rgb.map((color, ind) => {
+    return (color >> 3) << shifts[ind];
+  }).reduce((x, y) => x + y)
+}
+
 function copyColorCode() {
   function genColorTable(countAndColors) {
   var table = '';
@@ -459,10 +474,7 @@ function copyColorCode() {
         table += `db ${Math.min(count, 0x7F).toString().padStart(2, ' ')}`;
       }
       table += ' : db 0, !destination_color'
-      const shifts = [0, 5, 10];
-      const snesColor = e.slice(1).map((color, ind) => {
-        return (color >> 3) << shifts[ind];
-      }).reduce((x, y) => x + y);
+      const snesColor = RGB2PaletteColor(e.slice(1));
       table += ` : dw $${snesColor.toString(16)}`;
       table += '\n'
       count -= 0x7F;
@@ -510,10 +522,11 @@ db 0
   });
 }
 
-function copyCode() {
 function internalSlice(arr, ind1, ind2) {
   return arr.map(e => [e[ind1], e[ind2]]);
 }
+
+function copyCode() {
 const gradient = roundedGradients[selectedGradientType.value];
 const countAndColorsRG = convertToCountAndColors(internalSlice(gradient, 0, 1));
 const countAndColorsRB = convertToCountAndColors(internalSlice(gradient, 0, 2));
@@ -611,6 +624,323 @@ db 0
   });
 }
 
+function copyScrollingDualColorCode() {
+  function genColorTable(colors) {
+  var table = '';
+  colors.forEach((color, index) => {
+    const snesColor = RGB2PaletteColor(color);
+    table += `dw $${snesColor.toString(16)}`;
+    table += '\n'
+  });
+  return table;
+}
+
+const gradient = roundedGradients[selectedGradientType.value];
+const table = genColorTable(gradient);
+  var code = `
+; Scrolling dual color gradient ${internalData.value[0].color} to ${internalData.value[internalData.value.length-1].color}
+; generated from ${window.location.href}
+
+!FreeRAM = $7FC3E0 ; 12 bytes
+
+!hdma_channel1 = 3
+!hdma_channel2 = 4 ; should be the next one, or have no color hdmas between them
+!hdma_channel3 = 5 ; should be the next one, or have no color hdmas between them
+
+!destination_color1 = $43
+; destination_color2 is the next one
+
+; layer to scroll compared to
+!Layer = 1
+; higher values scroll more slowly
+!ScrollFactor = 0
+
+!Overworld = 1
+
+; number of scanlines 2nd color will be ahead of 1st
+!Offset = 3
+
+; end of configuration
+
+!hdma_base1 #= $4300|(!hdma_channel1<<4)
+!hdma_base2 #= $4300|(!hdma_channel2<<4)
+!hdma_base3 #= $4300|(!hdma_channel3<<4)
+
+CGADDTable:
+db $F0
+!i #= 0
+while !i < $70
+db !destination_color1
+!i #= !i+1
+endif
+db $F0
+!i #= 0
+while !i < $70
+db !destination_color1
+!i #= !i+1
+endif
+
+init:
+
+LDA.b #(1<<!hdma_channel1)|(1<<!hdma_channel2)|(1<<!hdma_channel3)
+TSB $0D9F|!addr
+
+LDA #$F0
+STA !FreeRAM
+STA !FreeRAM+3
+STA !FreeRAM+6
+STA !FreeRAM+9
+
+REP #$20
+LDA #$2100 ; CGADD 2121
+STA.w !hdma_base1
+LDA.w #CGADDTable
+STA.w !hdma_base1+2
+LDY.b #CGADDTable>>16
+STY.w !hdma_base1+4
+
+LDA #$2242 ; CGDATA 2122; indirect, one register write twice
+STA.w !hdma_base2
+STA.w !hdma_base3
+
+LDA.w #!FreeRAM
+STA.w !hdma_base2+2
+LDA.w #!FreeRAM+6
+STA.w !hdma_base3+2
+
+LDY.b #!FreeRAM>>16
+STY.w !hdma_base2+4
+STY.w !hdma_base3+4
+
+LDY.b #ColorTable>>16
+STY.w !hdma_base2+7
+STY.w !hdma_base3+7
+
+; RTL fallthrough
+
+end:
+REP #$31
+LDA.b $1C+((!Layer-1)*2)
+if !Overworld
+; CLC
+ADC.w #$0028 ; overworld goes negative
+endif
+LSR #!ScrollFactor
+; CLC
+ASL
+; CLC
+ADC.w #ColorTable
+; it is possible that hdma runs in between the RAM writes and gets a bogus value
+STA !FreeRAM+1
+ADC.w #!Offset*2
+STA !FreeRAM+1+6
+ADC.w #($70*2)-(!Offset*2)
+STA !FreeRAM+1+3
+ADC.w #!Offset*2
+STA !FreeRAM+1+9
+SEP #$30
+RTL
+
+ColorTable:
+${table}
+`
+
+  navigator.clipboard.writeText(code).then(function() {
+    Notify.create('Copied!')
+  }, function(err) {
+    Notify.create('Could not copy: ' + err)
+    console.error('Async: Could not copy text: ', err);
+  });
+}
+
+function copyScrollingColorCode() {
+  function genColorTable(colors) {
+  var table = '';
+  colors.forEach((color, index) => {
+    table += 'db 1';
+    table += ' : db 0, !destination_color'
+    const snesColor = RGB2PaletteColor(color);
+    table += ` : dw $${snesColor.toString(16)}`;
+    table += '\n'
+  });
+  return table;
+}
+
+const gradient = roundedGradients[selectedGradientType.value];
+const table = genColorTable(gradient);
+  var code = `
+; Scrolling color gradient ${internalData.value[0].color} to ${internalData.value[internalData.value.length-1].color}
+; generated from ${window.location.href}
+
+!hdma_channel1 = 3
+!destination_color = $44
+
+; layer to scroll with
+!Layer = 1
+; higher values scroll more slowly
+!ScrollFactor = 0
+!Overworld = 0
+
+; end of configuration
+
+!hdma_base1 #= $4300|(!hdma_channel1<<4)
+
+init:
+LDA.b #(1<<!hdma_channel1)
+TSB $0D9F|!addr
+
+REP #$20
+LDA #$2103  ; CGADD 2121
+STA.w !hdma_base1
+;LDA.w #ColorTable
+;STA.w !hdma_base1+2
+LDY.b #ColorTable>>16
+STY.w !hdma_base1+4
+
+; SEP #$20
+; RTL fallthrough
+
+end:
+REP #$21
+LDA.b $1C+((!Layer-1)*2)
+if !Overworld
+; CLC
+ADC.w #$0028 ; overworld goes negative
+endif
+LSR #!ScrollFactor
+STA $00
+ASL
+ASL
+; CLC
+ADC $00
+; CLC
+ADC #ColorTable
+; if the game is lagging, it is possible that hdma init runs in between the RAM writes and gets a bogus value
+STA.w !hdma_base1+2
+SEP #$20
+RTL
+
+ColorTable:
+${table}
+db 0
+`
+
+  navigator.clipboard.writeText(code).then(function() {
+    Notify.create('Copied!')
+  }, function(err) {
+    Notify.create('Could not copy: ' + err)
+    console.error('Async: Could not copy text: ', err);
+  });
+}
+
+
+function copyScrollingBGCode() {
+const gradient = roundedGradients[selectedGradientType.value];
+const gradientRG = internalSlice(gradient, 0, 1)
+const gradientB = gradient.map(e => [e[2]]);
+
+
+function genScrollBGTable(colors, mask) {
+  var table = '';
+  colors.forEach((e, index) => {
+    table += 'db 1';
+    e.forEach((color, ind) => {
+      table += ` : db $${((color >> 3)|mask[ind]).toString(16)}`
+    })
+    table += '\n';
+  });
+  return table;
+}
+
+// bgrccccc
+const doubleTable = genScrollBGTable(gradientRG, [0x20, 0x40]);
+const singleTable = genScrollBGTable(gradientB, [0x80]); 
+
+var code = `
+; Scrolling background gradient ${internalData.value[0].color} to ${internalData.value[internalData.value.length-1].color}
+; generated from ${window.location.href}
+!hdma_channel1 = 3
+!hdma_channel2 = 4
+
+; Layer to scroll with
+!Layer = 1
+; Higher values scroll more slowly
+!ScrollFactor = 0
+; Set to 1 if used on the overworld
+!Overworld = 0
+
+; end of configuration
+
+!hdma_base1 #= $4300|(!hdma_channel1<<4)
+!hdma_base2 #= $4300|(!hdma_channel2<<4)
+
+init:
+REP #$20
+LDA #$3206
+STA.w !hdma_base1
+;LDA.w #DoubleTable
+;STA.w !hdma_base1+2
+LDY.b #DoubleTable>>16
+STY.w !hdma_base1+4
+LDA #$3200
+STA.w !hdma_base2
+;LDA.w #SingleTable
+;STA.w !hdma_base2+2
+LDY.b #SingleTable>>16
+STY.w !hdma_base2+4
+
+SEP #$20
+LDA.b #(1<<!hdma_channel1)|(1<<!hdma_channel2)
+TSB $0D9F|!addr
+; RTL fallthrough
+
+end:
+REP #$31
+LDA.b $1C+((!Layer-1)*2)
+if !Overworld
+; CLC
+ADC.w #$0028 ; overworld goes negative
+endif
+LSR #!ScrollFactor
+STA $00
+ASL
+; CLC
+ADC $00
+; CLC
+ADC #DoubleTable
+; if the game is lagging, it is possible that snes hdma init runs in between the RAM writes and gets a bogus value
+STA.w !hdma_base1+2
+
+LDA.b $1C+((!Layer-1)*2)
+if !Overworld
+CLC
+ADC.w #$0028
+endif
+LSR #!ScrollFactor
+ASL
+; CLC
+ADC.w #SingleTable
+STA.w !hdma_base2+2
+SEP #$30
+RTL
+
+DoubleTable:
+${doubleTable}
+db 0
+
+SingleTable:
+${singleTable}
+db 0
+`
+
+  navigator.clipboard.writeText(code).then(function() {
+    Notify.create('Copied!')
+  }, function(err) {
+    Notify.create('Could not copy: ' + err)
+    console.error('Async: Could not copy text: ', err);
+  });
+}
+
 export default defineComponent({
   name: 'IndexPage',
   components: {
@@ -619,25 +949,24 @@ export default defineComponent({
   mounted,
   setup: function () {
 
-    const inHash = [internalData, selectedGradientType];
+    const inHash = [internalData, selectedGradientType, scanlinesRef];
 
     function updateValues(new_) {
-      for (var i = 0; i < inHash.length; i++) {
-        if (i == 0) {
-          const encodedInternalData = new_[i];
-          internalData.value = encodedInternalData.split('_').map(entry => {
-            const [color, position] = entry.split('-')
-            return {
-              color, position,
-              start: 0,
-              end: scanlines
-            }
-          }
-          )
-        } else {
-          inHash[i].value = decodeURIComponent(new_[i]);
+      inHash[1].value = decodeURIComponent(new_[1]);
+      inHash[2].value = decodeURIComponent(new_[2]);
+      scanlines = parseInt(decodeURIComponent(new_[2]));
+      scanlinesRef.value = parseInt(decodeURIComponent(new_[2]));
+
+      const encodedInternalData = new_[0];
+      const entries = encodedInternalData.split('_');
+      internalData.value = entries.map(entry => {
+        const [color, position] = entry.split('-')
+        return {
+          color, position,
+          start: 0,
+          end: scanlines
         }
-      }
+      });
     }
 
     const route = useRoute();
@@ -653,7 +982,7 @@ export default defineComponent({
         // this scrolls the page:
         //router.push(`/v1/${topColor.value.substring(1)}/${bottomColor.value.substring(1)}`);
         // FIXME: back button is weird with this
-        var hash = '/v1';
+        var hash = '/v2';
         for (var i = 0; i < inHash.length; i++) {
           var d = inHash[i].value;
           if (i == 0) {
@@ -670,6 +999,9 @@ export default defineComponent({
       downloadGradient,
       copyCode,
       copyColorCode,
+      copyScrollingBGCode,
+      copyScrollingColorCode,
+      copyScrollingDualColorCode,
       selectedGradientType,
       internalData,
       addInternal,
@@ -679,6 +1011,7 @@ export default defineComponent({
       clickMode,
       handleClick,
       canvasWheel: throttle(canvasWheel),
+      scanlinesRef,
     }
   }
 })

@@ -4,7 +4,12 @@ const routes = [
     path: '/',
     component: () => import('layouts/MainLayout.vue'),
     children: [
-      { path: 'v1/:pathMatch(.*)*', component: () => import('pages/IndexPage.vue') },
+      { path: 'v1/:pathMatch(.*)*',
+        redirect: to => {
+          return { path: '/v2/' + to.fullPath.substring(4) + '/224' }
+        },
+      },
+      { path: 'v2/:pathMatch(.*)*', component: () => import('pages/IndexPage.vue') },
       {
         path: '',
         redirect: to => {

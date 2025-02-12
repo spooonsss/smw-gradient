@@ -35,6 +35,9 @@
     Either 1. Download .PNG and import into EffectTool (BG Gradient>Image>Load Image).
     Or 2. Select "Gradient number" then "Copy BG Code" and insert with UberASM.
 
+    <br/><br/>
+    Be sure to patch <a href="https://www.smwcentral.net/?p=tweaks&a=details&id=39">HDMA Break Fix</a>
+
     </q-drawer>
 
     <q-page-container>

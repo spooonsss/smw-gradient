@@ -1,10 +1,8 @@
-set Path=%path%;c:\Program Files\nodejs;%userprofile%\AppData\Roaming\npm
+set Path=%path%;c:\Program Files\nodejs;%userprofile%\AppData\Roaming\npm  
 quasar dev
 
 
-# defecttool (defecttool)
-
-defecttool
+# defecttool 
 
 ## Install the dependencies
 ```bash
@@ -17,24 +15,6 @@ npm install
 ```bash
 quasar dev
 ```
-
-
-### Lint the files
-```bash
-yarn lint
-# or
-npm run lint
-```
-
-
-### Format the files
-```bash
-yarn format
-# or
-npm run format
-```
-
-
 
 ### Build the app for production
 ```bash

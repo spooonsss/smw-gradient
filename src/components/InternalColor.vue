@@ -1,6 +1,6 @@
 <template>
 
-  <q-slider v-model="value.position" :min="0" :max="224" :inner-min="value.start" :inner-max="value.end"/>
+  <q-slider v-model="value.position" :min="0" :max="max" :inner-min="value.start" :inner-max="value.end"/>
   <q-color v-model="color" />
 
 </template>
@@ -9,7 +9,7 @@
 import { defineComponent } from 'vue'
 
 export default {
-  props: ['modelValue'],
+  props: ['modelValue', 'max'],
   emits: ['update:modelValue'],
   computed: {
     color: {
