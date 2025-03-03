@@ -45,9 +45,9 @@
       </div>
     <div><q-btn color="white" text-color="black" label="Copy BG Code" @click="copyCode" />
       <q-btn color="white" text-color="black" label="Copy Color Code" @click="copyColorCode" />
-      <q-btn color="white" text-color="black" label="Copy Scrolling BG Code" @click="copyScrollingBGCode" />
-      <q-btn color="white" text-color="black" label="Copy Scrolling Color Code" @click="copyScrollingColorCode" />
-      <q-btn color="white" text-color="black" label="Copy Scrolling Dual Color Code" @click="copyScrollingDualColorCode" />
+      <q-btn color="white" v-if="scanlinesRef > 224" text-color="black" label="Copy Scrolling BG Code" @click="copyScrollingBGCode" />
+      <q-btn color="white" v-if="scanlinesRef > 224" text-color="black" label="Copy Scrolling Color Code" @click="copyScrollingColorCode" />
+      <q-btn color="white" v-if="scanlinesRef > 224" text-color="black" label="Copy Scrolling Dual Color Code" @click="copyScrollingDualColorCode" />
     </div>
   </div>
 </q-page>
