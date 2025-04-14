@@ -9,7 +9,12 @@ const routes = [
           return { path: '/v2/' + to.fullPath.substring(4) + '/224' }
         },
       },
-      { path: 'v2/:pathMatch(.*)*', component: () => import('pages/IndexPage.vue') },
+      { path: 'v2/:pathMatch(.*)*',
+        redirect: to => {
+          return { path: '/v3/' + to.fullPath.substring(4) + '/1' }
+        },
+      },
+      { path: 'v3/:pathMatch(.*)*', component: () => import('pages/IndexPage.vue') },
       {
         path: '',
         redirect: to => {
