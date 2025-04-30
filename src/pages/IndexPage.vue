@@ -32,10 +32,15 @@
     </div>
 
     <div>
-    <q-input filled v-model.number="quantize" label="Step Size" type="number" min="1"
+      <q-input filled v-model.number="quantize" label="Step Size" type="number" min="1"
     :rules="[
       (val) => (val && val > 0) || 'Must be 1 or larger',
       (val) => (val && Math.round(val) === val) || 'Must be integer',
+      ]"
+    />
+    <q-input filled v-model.number="quantizeStart" label="Step Offset" type="number"
+    :rules="[
+      (val) => (Math.round(val) === val) || 'Must be integer',
       ]"
     />
     <q-btn color="white" text-color="black" label="Download .png" @click="downloadGradient" />
@@ -75,6 +80,7 @@ const internalData = ref([
 ])
 const selectedGradientType = ref(1)
 const quantize = ref(1)
+const quantizeStart = ref(1)
 const tooltip = ref('')
 const clickMode = ref('Add')
 
@@ -93,7 +99,7 @@ watch([internalData], (old, new_) => {
   }
 
 }, {deep: true})
-watch([internalData, quantize], draw, {deep: true});
+watch([internalData, quantize, quantizeStart], draw, {deep: true});
 
 
 var gradients;
@@ -318,7 +324,8 @@ roundedGradients = gradients.map(gradient => {
 if (quantize.value) {
   roundedGradients = roundedGradients.map(gradient => {
   return gradient.map((entry, i) => {
-    return gradient[i - (i % quantize.value)];
+    console.log(`${i}   ${Math.max(0, i - (i % quantize.value) - quantizeStart.value)}`);
+    return gradient[Math.max(0, i - ((i - quantizeStart.value) % quantize.value))];
   });
 });
 }
@@ -964,7 +971,7 @@ export default defineComponent({
   mounted,
   setup: function () {
 
-    const inHash = [internalData, selectedGradientType, scanlinesRef, quantize];
+    const inHash = [internalData, selectedGradientType, scanlinesRef, quantize, quantizeStart];
 
     function updateValues(new_) {
       inHash[1].value = decodeURIComponent(new_[1]);
@@ -972,6 +979,7 @@ export default defineComponent({
       scanlines = parseInt(decodeURIComponent(new_[2]));
       scanlinesRef.value = parseInt(decodeURIComponent(new_[2]));
       quantize.value = parseInt(decodeURIComponent(new_[3]));
+      quantizeStart.value = parseInt(decodeURIComponent(new_[4]));
 
       const encodedInternalData = new_[0];
       const entries = encodedInternalData.split('_');
@@ -998,7 +1006,7 @@ export default defineComponent({
         // this scrolls the page:
         //router.push(`/v1/${topColor.value.substring(1)}/${bottomColor.value.substring(1)}`);
         // FIXME: back button is weird with this
-        var hash = '/v3';
+        var hash = '/v4';
         for (var i = 0; i < inHash.length; i++) {
           var d = inHash[i].value;
           if (i == 0) {
@@ -1029,6 +1037,7 @@ export default defineComponent({
       canvasWheel: throttle(canvasWheel),
       scanlinesRef,
       quantize,
+      quantizeStart,
     }
   }
 })

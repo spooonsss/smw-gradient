@@ -14,7 +14,12 @@ const routes = [
           return { path: '/v3/' + to.fullPath.substring(4) + '/1' }
         },
       },
-      { path: 'v3/:pathMatch(.*)*', component: () => import('pages/IndexPage.vue') },
+      { path: 'v3/:pathMatch(.*)*',
+        redirect: to => {
+          return { path: '/v4/' + to.fullPath.substring(4) + '/-1' }
+        },
+      },
+      { path: 'v4/:pathMatch(.*)*', component: () => import('pages/IndexPage.vue') },
       {
         path: '',
         redirect: to => {
