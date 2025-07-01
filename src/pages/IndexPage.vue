@@ -20,8 +20,11 @@
     <q-btn round color="primary" icon="add_circle" @click="$event => addInternal(undefined)"/>
 
     <div class="column" v-for="data, i in internalData" :key="data">
-      <q-badge color="secondary">
-        {{ i == 0 ? 'Start' : (i == internalData.length - 1 ? 'End' : 'Internal ' + i) }} : {{ internalData[i].position }}
+      <q-badge color="secondary" style="margin-bottom: 0.2em;">
+        {{ i == 0 ? 'Start' : (i == internalData.length - 1 ? 'End' : 'Internal ' + i) }} :
+
+      &nbsp;
+      <PositionAdjust v-model="internalData[i]" :max="scanlinesRef" />
       </q-badge>
       <InternalColor v-model="internalData[i]" :max="scanlinesRef"/>
 
@@ -69,6 +72,7 @@ import { defineComponent, ref, watch } from 'vue'
 import { Notify, useQuasar } from 'quasar'
 import { useRoute, useRouter } from 'vue-router'
 import InternalColor from 'components/InternalColor.vue'
+import PositionAdjust from 'components/PositionAdjust.vue'
 import chroma from 'chroma-js'
 
 import download from 'downloadjs';
@@ -324,7 +328,7 @@ roundedGradients = gradients.map(gradient => {
 if (quantize.value) {
   roundedGradients = roundedGradients.map(gradient => {
   return gradient.map((entry, i) => {
-    console.log(`${i}   ${Math.max(0, i - (i % quantize.value) - quantizeStart.value)}`);
+    // console.log(`${i}   ${Math.max(0, i - (i % quantize.value) - quantizeStart.value)}`);
     return gradient[Math.max(0, i - ((i - quantizeStart.value) % quantize.value))];
   });
 });
@@ -876,7 +880,7 @@ function genScrollBGTable(colors, mask) {
 
 // bgrccccc
 const doubleTable = genScrollBGTable(gradientRG, [0x20, 0x40]);
-const singleTable = genScrollBGTable(gradientB, [0x80]); 
+const singleTable = genScrollBGTable(gradientB, [0x80]);
 
 var code = `
 ; Scrolling background gradient ${internalData.value[0].color} to ${internalData.value[internalData.value.length-1].color}
@@ -966,7 +970,8 @@ db 0
 export default defineComponent({
   name: 'IndexPage',
   components: {
-    InternalColor
+    InternalColor,
+    PositionAdjust
   },
   mounted,
   setup: function () {
